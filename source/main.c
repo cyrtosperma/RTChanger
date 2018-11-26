@@ -16,7 +16,7 @@ enum {
     YEAR_OFFSET
 };
 
-typedef struct  
+typedef struct
 {
     u8 seconds;
     u8 minute;
@@ -103,10 +103,8 @@ void setMaxDayValue(RTC * rtctime)
     if(rtctime->day == previousMax) rtctime->day = maxDayValue;
 }
 
-Result initServices(PrintConsole topScreen, PrintConsole bottomScreen){ //Initializes the services.
-    gfxInit(GSP_RGB565_OES, GSP_BGR8_OES, false); //Inits both screens.
+Result initServices(PrintConsole topScreen){ //Initializes the services.
     consoleInit(GFX_TOP, &topScreen);
-    consoleInit(GFX_BOTTOM, &bottomScreen);
     Result ret = mcuInit();
     return ret;
 }
@@ -155,9 +153,12 @@ void BCD_to_RTC(RTC * rtctime)
 
 int main ()
 {
+    gfxInit(GSP_RGB565_OES, GSP_BGR8_OES, false); //Inits both screens.
     PrintConsole topScreen, bottomScreen;
-    Result ret = initServices(topScreen, bottomScreen);
+    consoleInit(GFX_TOP, &topScreen);
+    consoleInit(GFX_BOTTOM, &bottomScreen);
     consoleSelect(&bottomScreen);
+    Result ret = mcuInit();
     if(R_FAILED(ret))
     {
         consoleSelect(&topScreen);
@@ -195,6 +196,8 @@ int main ()
     u8 * bufs = (u8*)&rtctime;
     int offs = 0;
     
+    int fc = 0;
+    
     while (aptMainLoop()) //Detects the user input.
     {
         hidScanInput();               //Scans for input.
@@ -205,14 +208,21 @@ int main ()
         printf("\n\n\n\n\n\n\n\n%4.4u/%2.2u/%2.2u %2.2u:%2.2u:%2.2u\n", rtctime.year+2000, rtctime.month, rtctime.day, rtctime.hour, rtctime.minute, rtctime.seconds);
         printf("%*s\e[0K\e[1A\e[99D", cursorOffset[offs], "^^"); //Displays the cursor and time.
         
+        if( (kHeld & KEY_UP) || (kHeld & KEY_DOWN))
+            fc++;
+        else
+            fc = 0;
+        if(fc > 20)
+            fc = 18;
+        
         if(kHeld & KEY_START) break;  //User can choose to continue or return to the Home Menu.  
         
-        if(kDown & (KEY_UP))          //Detects if the UP D-PAD button was pressed.
+        if(kDown & (KEY_UP) || ((kHeld & KEY_UP) && fc == 20))          //Detects if the UP D-PAD button was pressed.
         {
             bufs[offs]++;
             if(bufs[offs] == maxValue[offs]) bufs[offs] = minValue[offs];
         }
-        if(kDown & (KEY_DOWN)) //Detects if the DOWN D-PAD button was pressed.
+        if(kDown & (KEY_DOWN) || ((kHeld & KEY_DOWN) && fc == 20)) //Detects if the DOWN D-PAD button was pressed.
         {
             bufs[offs]--;
             if(bufs[offs] < minValue[offs] || bufs[offs] >= maxValue[offs]) bufs[offs] = maxValue[offs]-1;
@@ -236,7 +246,8 @@ int main ()
             ret = mcuWriteRegister(0x30, &rtctime, UNITS_AMOUNT);
             BCD_to_RTC(&rtctime);
             
-            deinitServices();
+            mcuExit();
+            gfxExit();
             
             APT_HardwareResetAsync();
         }
@@ -248,7 +259,8 @@ int main ()
         gspWaitForVBlank();
     }
     
-    deinitServices();
+    mcuExit();
+    gfxExit();
     
     return 0;
 }
